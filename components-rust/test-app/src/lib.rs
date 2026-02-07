@@ -107,8 +107,7 @@ impl CalculationAgent for CalculationAgentImpl {
     }
 
     fn process(&self, v: u32) -> u32 {
-        let result = v * v;
-        result
+        v * v
     }
 
     fn process_and_notify(&self, v: u32, id: String) -> u32 {
@@ -116,5 +115,59 @@ impl CalculationAgent for CalculationAgentImpl {
 
         TestAgentClient::get(id).trigger_set_calculated_value(result);
         result
+    }
+}
+
+#[agent_definition(mode = "ephemeral")]
+pub trait TestRequestAgent {
+    fn new() -> Self;
+
+    fn process(&mut self, id: String, v: u32);
+
+    fn process_async(&mut self, id: String, v: u32);
+
+    fn process_schedule(&mut self, id: String, v: u32, delay: u32);
+}
+
+struct TestRequestAgentImpl {}
+
+#[agent_implementation]
+impl TestRequestAgent for TestRequestAgentImpl {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn process(&mut self, id: String, v: u32) {
+        println!(
+            "TestRequestAgent: processing id: {}, value: {}",
+            id.clone(),
+            v
+        );
+        TestAgentClient::get(id.clone()).trigger_process(v);
+        println!("TestRequestAgent: processed id: {}", id);
+    }
+
+    fn process_async(&mut self, id: String, v: u32) {
+        println!(
+            "TestRequestAgent: processing async id: {}, value: {}",
+            id.clone(),
+            v
+        );
+        TestAgentClient::get(id.clone()).trigger_process_async(v);
+        println!(
+            "TestRequestAgent: async processing triggered for id: {}",
+            id
+        );
+    }
+
+    fn process_schedule(&mut self, id: String, v: u32, delay: u32) {
+        println!(
+            "TestRequestAgent: scheduling process id: {}, value: {}, delay: {}",
+            id.clone(),
+            v,
+            delay
+        );
+        TestAgentClient::get(id.clone()).trigger_process_schedule(v, delay);
+        println!("TestRequestAgent: scheduled processing for id: {}", id);
     }
 }
