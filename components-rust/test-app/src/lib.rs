@@ -1,0 +1,120 @@
+use golem_rust::golem_wasm::wasi::clocks::wall_clock::Datetime;
+use golem_rust::{agent_definition, agent_implementation};
+
+#[agent_definition]
+pub trait TestAgent {
+    fn new(name: String) -> Self;
+
+    async fn process(&mut self, v: u32) -> u32;
+
+    fn process_async(&mut self, v: u32);
+
+    fn process_schedule(&mut self, v: u32, delay: u32);
+
+    fn set_calculated_value(&mut self, v: u32);
+
+    fn get_last_input_value(&self) -> u32;
+
+    fn get_calculated_value(&self) -> u32;
+}
+
+struct TestAgentImpl {
+    _id: String,
+    last_input_value: u32,
+    calculated_value: u32,
+}
+
+#[agent_implementation]
+impl TestAgent for TestAgentImpl {
+    fn new(id: String) -> Self {
+        Self {
+            _id: id,
+            last_input_value: 1,
+            calculated_value: 1,
+        }
+    }
+
+    async fn process(&mut self, v: u32) -> u32 {
+        self.last_input_value = v;
+        println!("processing - value: {}", v);
+        let r = CalculationAgentClient::get().process(v).await;
+        println!("processing - value: {}, result: {}", v, r);
+        self.calculated_value = r;
+        self.calculated_value
+    }
+
+    fn process_async(&mut self, v: u32) {
+        self.last_input_value = v;
+        println!("processing async - value: {}", v);
+        CalculationAgentClient::get().trigger_process_and_notify(v, self._id.clone());
+        println!("processing async - value: {} - triggered", v);
+    }
+
+    fn process_schedule(&mut self, v: u32, delay: u32) {
+        self.last_input_value = v;
+
+        // nearest minute
+        let schedule_time = chrono::Utc::now() + chrono::Duration::seconds(delay as i64);
+
+        println!(
+            "post schedule - value: {} - scheduling: {}",
+            v, schedule_time
+        );
+
+        let seconds = schedule_time.timestamp() as u64;
+        let nanoseconds = schedule_time.timestamp_subsec_nanos();
+
+        CalculationAgentClient::get().schedule_process_and_notify(
+            v,
+            self._id.clone(),
+            Datetime {
+                seconds,
+                nanoseconds,
+            },
+        );
+        println!("processing schedule - value: {} - scheduled", v);
+    }
+
+    fn set_calculated_value(&mut self, v: u32) {
+        println!("set calculated value: {}", v);
+        self.calculated_value = v
+    }
+
+    fn get_last_input_value(&self) -> u32 {
+        self.last_input_value
+    }
+
+    fn get_calculated_value(&self) -> u32 {
+        self.calculated_value
+    }
+}
+
+#[agent_definition(mode = "ephemeral")]
+pub trait CalculationAgent {
+    fn new() -> Self;
+
+    fn process(&self, v: u32) -> u32;
+
+    fn process_and_notify(&self, v: u32, id: String) -> u32;
+}
+
+struct CalculationAgentImpl {}
+
+#[agent_implementation]
+impl CalculationAgent for CalculationAgentImpl {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn process(&self, v: u32) -> u32 {
+        let result = v * v;
+        result
+    }
+
+    fn process_and_notify(&self, v: u32, id: String) -> u32 {
+        let result = v * v;
+
+        TestAgentClient::get(id).trigger_set_calculated_value(result);
+        result
+    }
+}
