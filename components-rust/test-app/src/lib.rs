@@ -11,6 +11,8 @@ pub trait TestAgent {
 
     fn process_schedule(&mut self, v: u32, delay: u32);
 
+    fn process_self_schedule(&mut self, v: u32, delay: u32);
+
     fn set_calculated_value(&mut self, v: u32);
 
     fn get_last_input_value(&self) -> u32;
@@ -52,27 +54,29 @@ impl TestAgent for TestAgentImpl {
 
     fn process_schedule(&mut self, v: u32, delay: u32) {
         self.last_input_value = v;
-
-        // nearest minute
         let schedule_time = chrono::Utc::now() + chrono::Duration::seconds(delay as i64);
-
         println!(
             "post schedule - value: {} - scheduling: {}",
             v, schedule_time
         );
 
-        let seconds = schedule_time.timestamp() as u64;
-        let nanoseconds = schedule_time.timestamp_subsec_nanos();
-
         CalculationAgentClient::get().schedule_process_and_notify(
             v,
             self._id.clone(),
-            Datetime {
-                seconds,
-                nanoseconds,
-            },
+            get_datetime(schedule_time),
         );
         println!("processing schedule - value: {} - scheduled", v);
+    }
+
+    fn process_self_schedule(&mut self, v: u32, delay: u32) {
+        let schedule_time = chrono::Utc::now() + chrono::Duration::seconds(delay as i64);
+        println!(
+            "post self schedule - value: {} - scheduling: {}",
+            v, schedule_time
+        );
+
+        TestAgentClient::get(self._id.clone()).schedule_process(v, get_datetime(schedule_time));
+        println!("processing self schedule - value: {} - scheduled", v);
     }
 
     fn set_calculated_value(&mut self, v: u32) {
@@ -161,13 +165,45 @@ impl TestRequestAgent for TestRequestAgentImpl {
     }
 
     fn process_schedule(&mut self, id: String, v: u32, delay: u32) {
+        let schedule_time = chrono::Utc::now() + chrono::Duration::seconds(delay as i64);
         println!(
-            "TestRequestAgent: scheduling process id: {}, value: {}, delay: {}",
+            "TestRequestAgent: scheduling process id: {}, value: {}, delay: {}, schedule: {}",
             id.clone(),
             v,
-            delay
+            delay,
+            schedule_time
         );
-        TestAgentClient::get(id.clone()).trigger_process_schedule(v, delay);
+        // TestAgentClient::get(id.clone()).trigger_process_schedule(v, delay);
+        TestAgentClient::get(id.clone()).schedule_process_async(v, get_datetime(schedule_time));
         println!("TestRequestAgent: scheduled processing for id: {}", id);
+    }
+}
+
+fn get_datetime(value: chrono::DateTime<chrono::Utc>) -> Datetime {
+    let seconds = value.timestamp() as u64;
+    let nanoseconds = value.timestamp_subsec_nanos();
+
+    Datetime {
+        seconds,
+        nanoseconds,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn datetime_to_chrono(datetime: Datetime) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::from_timestamp(datetime.seconds as i64, datetime.nanoseconds)
+            .expect("Invalid datetime values")
+    }
+
+    #[test]
+    fn test_get_datetime_with_current_time() {
+        let now = chrono::Utc::now();
+        let result = get_datetime(now);
+
+        let converted_back = datetime_to_chrono(result);
+        assert_eq!(now, converted_back);
     }
 }
